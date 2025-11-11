@@ -6,8 +6,6 @@ import app from '../src/app.js';
 import { connectDB } from '../src/config/db.js';
 import { User } from '../src/models/User.js';
 
-// Helper to spin up the Express application on an ephemeral port so that the
-// tests exercise the real HTTP stack exactly as a user would.
 async function startHttpServer() {
   return new Promise((resolve) => {
     const instance = http.createServer(app);
@@ -29,7 +27,6 @@ describe('Authentication controller integration', () => {
 
   beforeAll(async () => {
     await connectDB();
-    // Guarantee a clean slate for the email we are about to register.
     await User.deleteOne({ email: credentials.email.toLowerCase() });
 
     serverInstance = await startHttpServer();
@@ -38,9 +35,7 @@ describe('Authentication controller integration', () => {
   });
 
   afterAll(async () => {
-    // Remove the test artefacts so the live database stays tidy for future runs.
     await User.deleteOne({ email: credentials.email.toLowerCase() });
-
     await new Promise((resolve) => serverInstance.close(resolve));
     await mongoose.connection.close();
   });
@@ -54,8 +49,6 @@ describe('Authentication controller integration', () => {
 
     const payload = await response.json();
 
-    // Successful registration should return 201 alongside a token and the
-    // public portion of the newly saved user record.
     expect(response.status).toBe(201);
     expect(payload.token).toBeTruthy();
     expect(payload.user.email).toBe(credentials.email.toLowerCase());
@@ -64,17 +57,26 @@ describe('Authentication controller integration', () => {
     issuedToken = payload.token;
   });
 
-  /*
-  TODO: test login behaviour
-  - attempt login request with user credentiials
-  - expect a 200 response
-  - expect a JWT token in the response
-  - expect the returned user profile to match the registered user
-  - store the issued token for use in subsequent tests
-  */
   test('authenticates the same user and issues a fresh JWT', async () => {
-    // This test will always fail until the TODO above is implemented.
-    expect(true).toBe(false);
+    const response = await fetch(`${baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: credentials.email,
+        password: credentials.password
+      })
+    });
+
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.token).toBeTruthy();
+    expect(typeof payload.token).toBe('string');
+    expect(payload.user.email).toBe(credentials.email.toLowerCase());
+    expect(payload.user).not.toHaveProperty('passwordHash');
+
+    expect(payload.token).not.toBe(issuedToken);
+    issuedToken = payload.token;
   });
 
   test('returns the public profile for the currently authenticated user', async () => {
@@ -84,7 +86,6 @@ describe('Authentication controller integration', () => {
 
     const payload = await response.json();
 
-    // A valid token must yield the sanitized user profile.
     expect(response.status).toBe(200);
     expect(payload.user.email).toBe(credentials.email.toLowerCase());
     expect(payload.user).not.toHaveProperty('passwordHash');
